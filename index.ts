@@ -1,11 +1,10 @@
 import path from "node:path";
-import { definePluginEntry, type OpenClawPluginService } from "openclaw/plugin-sdk/core";
 import { pluginConfigSchema, resolvePluginConfig } from "./src/config.js";
 import { getPluginManager } from "./src/manager.js";
 
 const PLUGIN_ID = "llm-logger-openclaw-plugin";
 
-export default definePluginEntry({
+export default {
   id: PLUGIN_ID,
   name: "LLM Logger OpenClaw Plugin",
   description: "Logs OpenClaw LLM request payloads and responses to a JSONL file.",
@@ -16,7 +15,7 @@ export default definePluginEntry({
     manager.setRegistrationLogger(api.logger);
     manager.setPluginConfig(pluginConfig);
 
-    const service: OpenClawPluginService = {
+    const service = {
       id: PLUGIN_ID,
       async start(ctx) {
         await manager.start({
@@ -42,4 +41,4 @@ export default definePluginEntry({
       manager.recordLlmOutput(event, ctx);
     });
   },
-});
+};
