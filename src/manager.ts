@@ -58,7 +58,7 @@ type ActiveState = {
   pluginId: string;
   logger: Logger;
   config: ResolvedPluginConfig;
-  writer: JsonlWriter;
+  writers: Map<string, JsonlWriter>;
 };
 
 type AgentLike = {
@@ -91,6 +91,7 @@ const GLOBAL_KEY = Symbol.for("llm-logger-openclaw-plugin.manager");
 const WEBSOCKET_CALL_CONTEXT = Symbol.for("llm-logger-openclaw-plugin.wsCallContext");
 const OBSERVED_WS_PATHS = ["/v1/responses"];
 const TURN_METADATA_TTL_MS = 5 * 60 * 1000;
+const UNKNOWN_SESSION_DIR = "_unknown_session";
 
 type PatchHandles = {
   restore: () => void;
@@ -127,12 +128,11 @@ class PluginManager {
     }
 
     const config = finalizePluginConfig(this.#pluginConfig, params.defaultLogFile);
-    const writer = new JsonlWriter(config.logFile);
     this.#activeState = {
       pluginId: params.pluginId,
       logger: params.logger,
       config,
-      writer,
+      writers: new Map(),
     };
 
     if (!config.enabled) {
@@ -145,7 +145,7 @@ class PluginManager {
         workspaceDir: params.workspaceDir,
       });
       params.logger.info(
-        `[${params.pluginId}] logging LLM traffic to ${config.logFile} (maxBodyBytes=${config.maxBodyBytes})`,
+        `[${params.pluginId}] logging LLM traffic under session directories based on ${config.logFile} (maxBodyBytes=${config.maxBodyBytes})`,
       );
     } catch (error) {
       params.logger.warn(`[${params.pluginId}] failed to install runtime patches: ${this.#formatError(error)}`);
@@ -162,7 +162,7 @@ class PluginManager {
     this.#patchHandles = null;
 
     if (this.#activeState) {
-      await this.#activeState.writer.close();
+      await Promise.all(Array.from(this.#activeState.writers.values(), (writer) => writer.close()));
     }
 
     this.#activeState = null;
@@ -346,6 +346,7 @@ class PluginManager {
           sessionId: typeof this._sessionId === "string" ? this._sessionId : undefined,
           provider: manager.#readString(model, "provider"),
           model: manager.#readString(model, "id"),
+          updatedAt: Date.now(),
         });
         const previousOnPayload = options?.onPayload;
         const nextOptions = {
@@ -462,8 +463,8 @@ class PluginManager {
       restore() {
         AgentCtor.prototype._runLoop = originalRunLoop;
         globalThis.fetch = originalFetch;
-        wsModule.prototype.send = originalWsSend;
-        wsModule.prototype.emit = originalWsEmit;
+        wsModule.prototype?.send && (wsModule.prototype.send = originalWsSend);
+        wsModule.prototype?.emit && (wsModule.prototype.emit = originalWsEmit);
       },
     };
   }
@@ -477,12 +478,59 @@ class PluginManager {
     const event = {
       ts: new Date().toISOString(),
       plugin: state.pluginId,
+      sessionId: this.#currentCallContext()?.sessionId,
       ...record,
     };
+    const sessionId =
+      typeof event.sessionId === "string" && event.sessionId.trim().length > 0
+        ? event.sessionId
+        : undefined;
+    const writer = this.#getWriterForEvent(state, sessionId, new Date());
 
-    void state.writer.write(event).catch((error) => {
+    void writer.write(event).catch((error) => {
       this.#logger().warn(`[${state.pluginId}] failed to write log entry: ${this.#formatError(error)}`);
     });
+  }
+
+  #getWriterForEvent(state: ActiveState, sessionId: string | undefined, now: Date): JsonlWriter {
+    const sessionDir = this.#sanitizeSessionDirName(sessionId);
+    const dateSuffix = this.#formatDateSuffix(now);
+    const key = `${sessionDir}|${dateSuffix}`;
+    const cachedWriter = state.writers.get(key);
+    if (cachedWriter) {
+      return cachedWriter;
+    }
+
+    const filePath = this.#buildSessionLogPath(state.config.logFile, sessionDir, dateSuffix);
+    const writer = new JsonlWriter(filePath);
+    state.writers.set(key, writer);
+    return writer;
+  }
+
+  #buildSessionLogPath(baseLogFile: string, sessionDir: string, dateSuffix: string): string {
+    const parsed = path.parse(baseLogFile);
+    const ext = parsed.ext || ".jsonl";
+    const baseName = parsed.name || "llm-log";
+    const filename = `${baseName}-${dateSuffix}${ext}`;
+    return path.join(parsed.dir, sessionDir, filename);
+  }
+
+  #sanitizeSessionDirName(sessionId: string | undefined): string {
+    if (!sessionId) {
+      return UNKNOWN_SESSION_DIR;
+    }
+    const normalized = sessionId.trim();
+    if (!normalized) {
+      return UNKNOWN_SESSION_DIR;
+    }
+    return normalized.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
+  }
+
+  #formatDateSuffix(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
 
   async #captureFetchResponse(
@@ -586,7 +634,7 @@ class PluginManager {
     const maxBodyBytes = this.#currentConfig()?.maxBodyBytes ?? 262_144;
 
     if (init?.body !== undefined) {
-      return await this.#captureBodyLike(init.body, maxBodyBytes);
+      return await this.#captureBodyLike(init.body as Request | BodyInit, maxBodyBytes);
     }
 
     if (typeof Request !== "undefined" && input instanceof Request && !input.bodyUsed) {

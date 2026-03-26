@@ -1,12 +1,14 @@
 import path from "node:path";
 import { pluginConfigSchema, resolvePluginConfig } from "./src/config.js";
 import { getPluginManager } from "./src/manager.js";
+import packageJson from "./package.json" with { type: "json" };
 
 const PLUGIN_ID = "llm-logger-openclaw-plugin";
 
 export default {
   id: PLUGIN_ID,
   name: "LLM Logger OpenClaw Plugin",
+  version: packageJson.version,
   description: "Logs OpenClaw LLM request payloads and responses to a JSONL file.",
   configSchema: pluginConfigSchema,
   register(api) {

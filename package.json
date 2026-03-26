@@ -1,6 +1,6 @@
 {
   "name": "llm-logger-openclaw-plugin",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "OpenClaw plugin that logs LLM request payloads and responses to JSONL.",
   "type": "module",
