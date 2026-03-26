@@ -2,7 +2,7 @@
   "id": "llm-logger-openclaw-plugin",
   "name": "LLM Logger OpenClaw Plugin",
   "description": "Logs OpenClaw LLM request payloads and responses to a JSONL file.",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

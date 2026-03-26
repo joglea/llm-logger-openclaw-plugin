@@ -13,6 +13,12 @@ OpenClaw 插件。
 
 ## 安装
 
+直接走npm包安装
+```bash
+openclaw plugins install @43world/llm-logger-openclaw-plugin
+```
+
+源码目录安装
 ```bash
 openclaw plugins install -l /root/projects/llm-logger-openclaw-plugin
 openclaw plugins enable llm-logger-openclaw-plugin
@@ -45,18 +51,18 @@ openclaw plugins enable llm-logger-openclaw-plugin
 如果不指定 `logFile`，默认按会话和日期写到：
 
 ```text
-<OPENCLAW_STATE_DIR>/logs/<session_id>/llm-logger-openclaw-plugin-YYYY-MM-DD.jsonl
+<OPENCLAW_STATE_DIR>/logs/<session_key>/llm-logger-openclaw-plugin-YYYY-MM-DD.jsonl
 ```
 
 其中：
 
-- `<session_id>` 来自 OpenClaw 会话；若缺失会写到 `_unknown_session` 目录
+- `<session_key>` 来自 OpenClaw 会话；若缺失会写到 `_unknown_session_key` 目录
 - `YYYY-MM-DD` 为当天日期后缀，用于每日滚动记录
 
 如果指定了 `logFile`（例如 `/tmp/openclaw-llm.jsonl`），会将其作为基准路径与基准文件名，最终写入：
 
 ```text
-/tmp/<session_id>/openclaw-llm-YYYY-MM-DD.jsonl
+/tmp/<session_key>/openclaw-llm-YYYY-MM-DD.jsonl
 ```
 
 ## 日志格式

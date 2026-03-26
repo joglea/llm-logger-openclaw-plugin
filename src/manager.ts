@@ -91,7 +91,7 @@ const GLOBAL_KEY = Symbol.for("llm-logger-openclaw-plugin.manager");
 const WEBSOCKET_CALL_CONTEXT = Symbol.for("llm-logger-openclaw-plugin.wsCallContext");
 const OBSERVED_WS_PATHS = ["/v1/responses"];
 const TURN_METADATA_TTL_MS = 5 * 60 * 1000;
-const UNKNOWN_SESSION_DIR = "_unknown_session";
+const UNKNOWN_SESSION_DIR = "_unknown_session_key";
 
 type PatchHandles = {
   restore: () => void;
@@ -479,21 +479,22 @@ class PluginManager {
       ts: new Date().toISOString(),
       plugin: state.pluginId,
       sessionId: this.#currentCallContext()?.sessionId,
+      sessionKey: this.#currentCallContext()?.sessionKey,
       ...record,
     };
-    const sessionId =
-      typeof event.sessionId === "string" && event.sessionId.trim().length > 0
-        ? event.sessionId
+    const sessionKey =
+      typeof event.sessionKey === "string" && event.sessionKey.trim().length > 0
+        ? event.sessionKey
         : undefined;
-    const writer = this.#getWriterForEvent(state, sessionId, new Date());
+    const writer = this.#getWriterForEvent(state, sessionKey, new Date());
 
     void writer.write(event).catch((error) => {
       this.#logger().warn(`[${state.pluginId}] failed to write log entry: ${this.#formatError(error)}`);
     });
   }
 
-  #getWriterForEvent(state: ActiveState, sessionId: string | undefined, now: Date): JsonlWriter {
-    const sessionDir = this.#sanitizeSessionDirName(sessionId);
+  #getWriterForEvent(state: ActiveState, sessionKey: string | undefined, now: Date): JsonlWriter {
+    const sessionDir = this.#sanitizeSessionDirName(sessionKey);
     const dateSuffix = this.#formatDateSuffix(now);
     const key = `${sessionDir}|${dateSuffix}`;
     const cachedWriter = state.writers.get(key);
@@ -515,11 +516,11 @@ class PluginManager {
     return path.join(parsed.dir, sessionDir, filename);
   }
 
-  #sanitizeSessionDirName(sessionId: string | undefined): string {
-    if (!sessionId) {
+  #sanitizeSessionDirName(sessionKey: string | undefined): string {
+    if (!sessionKey) {
       return UNKNOWN_SESSION_DIR;
     }
-    const normalized = sessionId.trim();
+    const normalized = sessionKey.trim();
     if (!normalized) {
       return UNKNOWN_SESSION_DIR;
     }
